@@ -5,9 +5,10 @@ import (
 	"log"
 	"net/url"
 	"path/filepath"
+	"sync"
+	"time"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/gocolly/colly/v2"
 	"github.com/samber/lo"
 
@@ -30,48 +31,44 @@ func (m *MobileTvShowsSite) Name() string {
 func (m *MobileTvShowsSite) Run(option types.RunOption) error {
 	c := colly.NewCollector()
 
-	results := []list.Item{}
+	results := []huh.Option[types.Descriptor]{}
 
 	target := "div.mainbox3 > table:first-child > tbody:first-child > tr > td:nth-child(2) span"
 	c.OnHTML(target, func(e *colly.HTMLElement) {
-		results = append(results, udl.SelectModel{
-			Title: e.ChildText("a[href]"),
-			Value: lo.Must(url.JoinPath(m.BaseUrl, e.ChildAttr("a[href]", "href"))),
-			Desc:  e.ChildText("small:nth-child(4)"),
-		})
+		desc := e.ChildText("small:nth-child(4)")
+		results = append(results, huh.NewOption(
+			e.ChildText("a[href]"),
+			types.Descriptor{
+				Title: e.ChildText("a[href]") + lo.Ternary(desc != "", " / "+desc, ""),
+				Link:  lo.Must(url.JoinPath(m.BaseUrl, e.ChildAttr("a[href]", "href"))),
+			}),
+		)
 	})
 
 	c.OnScraped(func(r *colly.Response) {
-		form := udl.SelectModelForm{Model: list.New(results, udl.ItemDelegate{}, 0, 0)}
-		form.Model.Title = "Select Series"
-
-		p := tea.NewProgram(form, tea.WithAltScreen())
-		payload, err := p.Run()
+		var series types.Descriptor
+		err := huh.NewSelect[types.Descriptor]().
+			Title("Choose Series").
+			Options(results...).
+			Value(&series).Run()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalln(err)
 		}
 
-		season, ok := payload.(udl.SelectModelForm).Model.SelectedItem().(udl.SelectModel)
-		if !ok {
-			return
-		}
-
-		m.ListSeasons(types.Descriptor{
-			Title: season.Title,
-			Link:  season.Value,
-		})
+		m.ListSeasons(series)
 	})
 
-	form := udl.InputModelForm()
-	form.Input.Placeholder = "Search for Series"
-
-	p := tea.NewProgram(form)
-	payload, err := p.Run()
+	var search string
+	err := huh.
+		NewInput().
+		Title("What do you want to watch?").
+		Validate(huh.ValidateNotEmpty()).
+		Value(&search).Run()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalln(err)
 	}
 
-	query := udl.Query{"search": payload.(udl.InputModel).Input.Value()}
+	query := udl.Query{"search": search}
 
 	c.Visit(lo.Must(url.JoinPath(m.BaseUrl, "search.php")) + "?" + query.String())
 
@@ -81,36 +78,33 @@ func (m *MobileTvShowsSite) Run(option types.RunOption) error {
 func (m *MobileTvShowsSite) ListSeasons(series types.Descriptor) {
 	c := colly.NewCollector()
 
-	results := []list.Item{}
+	results := []huh.Option[types.Descriptor]{}
 
 	target := `div[itemprop="containsSeason"] > div.mainbox2`
 	c.OnHTML(target, func(e *colly.HTMLElement) {
-		results = append(results, udl.SelectModel{
-			Title: e.ChildText("a[href]"),
-			Value: lo.Must(url.JoinPath(m.BaseUrl, e.ChildAttr("a[href]", "href"))),
-			Desc:  "",
-		})
+		results = append(
+			results,
+			huh.NewOption(
+				e.ChildText("a[href]"),
+				types.Descriptor{
+					Title: e.ChildText("a[href]"),
+					Link:  lo.Must(url.JoinPath(m.BaseUrl, e.ChildAttr("a[href]", "href"))),
+				},
+			),
+		)
 	})
 
 	c.OnScraped(func(r *colly.Response) {
-		form := udl.SelectModelForm{Model: list.New(results, udl.ItemDelegate{}, 0, 0)}
-		form.Model.Title = "Select Season"
-
-		p := tea.NewProgram(form, tea.WithAltScreen())
-		payload, err := p.Run()
+		var season types.Descriptor
+		err := huh.NewSelect[types.Descriptor]().
+			Title("Choose Series").
+			Options(results...).
+			Value(&season).Run()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalln(err)
 		}
 
-		season, ok := payload.(udl.SelectModelForm).Model.SelectedItem().(udl.SelectModel)
-		if !ok {
-			return
-		}
-
-		m.ListEpisodes(types.Descriptor{
-			Title: season.Title,
-			Link:  season.Value,
-		})
+		m.ListEpisodes(season)
 	})
 
 	c.Visit(series.Link)
@@ -119,39 +113,53 @@ func (m *MobileTvShowsSite) ListSeasons(series types.Descriptor) {
 func (m *MobileTvShowsSite) ListEpisodes(season types.Descriptor) {
 	c := colly.NewCollector()
 
-	results := []list.Item{}
+	results := []huh.Option[types.Descriptor]{}
 
 	target := `div.mainbox > table:first-child > tbody:first-child > tr:first-child > td:nth-child(2) > span:first-child`
 	c.OnHTML(target, func(e *colly.HTMLElement) {
-		results = append(results, udl.SelectModel{
-			Title: e.ChildText("small:first-child"),
-			Value: m.BaseUrl + "/" + e.ChildAttr("a[href]:nth-child(2)", "href"),
-			Desc:  "High MP4",
-		})
+		results = append(results, huh.NewOption(
+			e.ChildText("small:first-child"),
+			types.Descriptor{
+				Title: e.ChildText("small:first-child") + "/ High MP4",
+				Link:  m.BaseUrl + "/" + e.ChildAttr("a[href]:nth-child(2)", "href"),
+			},
+		),
+		)
 	})
 
 	c.OnScraped(func(r *colly.Response) {
-		form := udl.SelectModelForm{Model: list.New(results, udl.ItemDelegate{}, 0, 0)}
-		form.Model.Title = "Select Episode"
-
-		p := tea.NewProgram(form, tea.WithAltScreen())
-		payload, err := p.Run()
+		var episodes []types.Descriptor
+		err := huh.NewMultiSelect[types.Descriptor]().
+			Title("Choose Series").
+			Options(results...).
+			Value(&episodes).Run()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalln(err)
 		}
 
-		season, ok := payload.(udl.SelectModelForm).Model.SelectedItem().(udl.SelectModel)
-		if !ok {
-			return
-		}
-
-		m.Download(types.Descriptor{
-			Title: season.Title,
-			Link:  season.Value,
-		})
+		m.BulkDownload(episodes)
 	})
 
 	c.Visit(season.Link)
+}
+
+func (m *MobileTvShowsSite) BulkDownload(episodes []types.Descriptor) {
+	start := time.Now()
+
+	var wg sync.WaitGroup
+
+	for _, episode := range episodes {
+		wg.Add(1)
+		go func(ep types.Descriptor) {
+			defer wg.Done()
+			m.Download(ep)
+		}(episode) // pass as arg to avoid closure capture issue
+	}
+
+	wg.Wait() // Wait for all goroutines to finish
+
+	elapsed := time.Since(start)
+	fmt.Printf("Took %.2f minute(s) to download %d episode(s)!", elapsed.Minutes(), len(episodes))
 }
 
 func (m *MobileTvShowsSite) Download(episode types.Descriptor) {
