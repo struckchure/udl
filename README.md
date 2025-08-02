@@ -1,5 +1,7 @@
 # **Universal Downloader** 📺
 
+![Demo](./docs/demo.gif)
+
 ## Overview
 Universal Downloader is a command-line utility built in Go that empowers users to effortlessly search, select, and download TV show episodes from various online sources. It leverages robust web scraping techniques and provides an intuitive, interactive terminal user interface (TUI) for a seamless experience.
 
