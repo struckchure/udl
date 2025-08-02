@@ -11,8 +11,8 @@ if (-not $Version) {
 $BaseUrl = "https://github.com/struckchure/udl/releases/download/$Version"
 
 # Define the file names (adjust these as needed)
-$Windows_AMD64 = "gv_Windows_x86_64.zip"
-$Windows_ARM64 = "gv_Windows_arm64.zip"
+$Windows_AMD64 = "udl_Windows_x86_64.zip"
+$Windows_ARM64 = "udl_Windows_arm64.zip"
 
 # Determine the architecture
 $Arch = [System.Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE")

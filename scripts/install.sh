@@ -10,10 +10,10 @@ VERSION=${1:-$DEFAULT_VERSION}
 BASE_URL="https://github.com/struckchure/udl/releases/download/${VERSION}"
 
 # Define the file names (adjust these as needed)
-LINUX_AMD64="gv_Linux_x86_64.tar.gz"
-LINUX_ARM64="gv_Linux_arm64.tar.gz"
-MACOS_AMD64="gv_Darwin_x86_64.tar.gz"
-MACOS_ARM64="gv_Darwin_arm64.tar.gz"
+LINUX_AMD64="udl_Linux_x86_64.tar.gz"
+LINUX_ARM64="udl_Linux_arm64.tar.gz"
+MACOS_AMD64="udl_Darwin_x86_64.tar.gz"
+MACOS_ARM64="udl_Darwin_arm64.tar.gz"
 
 # Determine the OS and architecture
 OS=$(uname -s)
