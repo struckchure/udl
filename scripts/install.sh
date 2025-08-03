@@ -56,7 +56,7 @@ case "$OS" in
 esac
 
 # Define the destination directory
-DEST_DIR="$HOME/.gv/bin"
+DEST_DIR="$HOME/.udl/bin"
 
 # Create the destination directory if it does not exist
 mkdir -p "$DEST_DIR"
@@ -65,14 +65,14 @@ mkdir -p "$DEST_DIR"
 echo "Downloading $FILE..."
 curl -fsSL "${BASE_URL}/${FILE}" -o "${FILE}"
 
-# Extract the downloaded file to the .gv directory
+# Extract the downloaded file to the .udl directory
 echo "Extracting $FILE to $DEST_DIR..."
 tar -xzf "$FILE" -C "$DEST_DIR"
 
 # Remove the downloaded file
 rm "$FILE"
 
-# Add .gv directory to PATH if not already present
+# Add .udl directory to PATH if not already present
 PATH_ENTRY="export PATH=\"$DEST_DIR:\$PATH\""
 PROFILE_FILE="$HOME/.bashrc"
 
