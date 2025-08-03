@@ -15,11 +15,8 @@ import (
 	"github.com/struckchure/udl"
 )
 
-type IMobileTvShowsSite interface {
-	udl.ISite
-}
-
 type MobileTvShowsSite struct {
+	udl.BaseSite
 	BaseUrl string
 }
 
@@ -54,7 +51,7 @@ func (m *MobileTvShowsSite) Run(option udl.RunOption) error {
 			log.Fatalln(err)
 		}
 
-		m.ListSeasons(series)
+		m.listSeasons(series)
 	})
 
 	var search string
@@ -74,7 +71,7 @@ func (m *MobileTvShowsSite) Run(option udl.RunOption) error {
 	return nil
 }
 
-func (m *MobileTvShowsSite) ListSeasons(series udl.Descriptor) {
+func (m *MobileTvShowsSite) listSeasons(series udl.Descriptor) {
 	c := colly.NewCollector()
 
 	results := []huh.Option[udl.Descriptor]{}
@@ -103,13 +100,13 @@ func (m *MobileTvShowsSite) ListSeasons(series udl.Descriptor) {
 			log.Fatalln(err)
 		}
 
-		m.ListEpisodes(season)
+		m.listEpisodes(season)
 	})
 
 	c.Visit(series.Link)
 }
 
-func (m *MobileTvShowsSite) ListEpisodes(season udl.Descriptor) {
+func (m *MobileTvShowsSite) listEpisodes(season udl.Descriptor) {
 	c := colly.NewCollector()
 
 	results := []huh.Option[udl.Descriptor]{}
@@ -136,13 +133,13 @@ func (m *MobileTvShowsSite) ListEpisodes(season udl.Descriptor) {
 			log.Fatalln(err)
 		}
 
-		m.BulkDownload(episodes)
+		m.bulkDownload(episodes)
 	})
 
 	c.Visit(season.Link)
 }
 
-func (m *MobileTvShowsSite) BulkDownload(episodes []udl.Descriptor) {
+func (m *MobileTvShowsSite) bulkDownload(episodes []udl.Descriptor) {
 	start := time.Now()
 
 	var wg sync.WaitGroup
@@ -151,7 +148,7 @@ func (m *MobileTvShowsSite) BulkDownload(episodes []udl.Descriptor) {
 		wg.Add(1)
 		go func(ep udl.Descriptor) {
 			defer wg.Done()
-			m.Download(ep)
+			m.download(ep)
 		}(episode) // pass as arg to avoid closure capture issue
 	}
 
@@ -161,7 +158,7 @@ func (m *MobileTvShowsSite) BulkDownload(episodes []udl.Descriptor) {
 	fmt.Printf("Took %.2f minute(s) to download %d episode(s)!", elapsed.Minutes(), len(episodes))
 }
 
-func (m *MobileTvShowsSite) Download(episode udl.Descriptor) {
+func (m *MobileTvShowsSite) download(episode udl.Descriptor) {
 	c := colly.NewCollector()
 
 	target := "div.mainbox2:nth-child(31) > table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(1) > td:nth-child(2) > span:nth-child(1) > a:nth-child(1)"

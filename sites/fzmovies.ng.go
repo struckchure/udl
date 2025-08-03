@@ -15,11 +15,8 @@ import (
 	"github.com/struckchure/udl"
 )
 
-type IFzMoviesNg interface {
-	udl.ISite
-}
-
 type FzMoviesNg struct {
+	udl.BaseSite
 	BaseUrl string
 }
 
@@ -62,7 +59,7 @@ func (m *FzMoviesNg) Run(option udl.RunOption) error {
 			log.Fatal("No URL found")
 		}
 
-		m.Download(strings.TrimSpace(matches[1]))
+		m.download(strings.TrimSpace(matches[1]))
 	})
 
 	c.OnError(func(r *colly.Response, _ error) {
@@ -114,7 +111,7 @@ func (m *FzMoviesNg) Run(option udl.RunOption) error {
 	return nil
 }
 
-func (m *FzMoviesNg) Download(link string) {
+func (m *FzMoviesNg) download(link string) {
 	if link != "" {
 		splittedLink := strings.Split(link, "-")
 		prevExt := splittedLink[len(splittedLink)-1]
