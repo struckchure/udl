@@ -32,7 +32,7 @@ switch ($Arch) {
 }
 
 # Define the destination directory
-$DestDir = "$env:USERPROFILE\.gv\bin"
+$DestDir = "$env:USERPROFILE\.udl\bin"
 
 # Create the destination directory if it does not exist
 if (-not (Test-Path $DestDir)) {
@@ -43,14 +43,14 @@ if (-not (Test-Path $DestDir)) {
 Write-Host "Downloading $File..."
 Invoke-WebRequest -Uri "$BaseUrl/$File" -OutFile "$File"
 
-# Extract the downloaded file to the .gv\bin directory
+# Extract the downloaded file to the .udl\bin directory
 Write-Host "Extracting $File to $DestDir..."
 Expand-Archive -Path $File -DestinationPath $DestDir -Force
 
 # Remove the downloaded file
 Remove-Item -Path $File -Force
 
-# Add .gv\bin to the PATH if it's not already there
+# Add .udl\bin to the PATH if it's not already there
 $PathEntry = "$DestDir"
 $CurrentPath = [System.Environment]::GetEnvironmentVariable("PATH", [System.EnvironmentVariableTarget]::User)
 
