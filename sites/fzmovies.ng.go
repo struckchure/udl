@@ -13,11 +13,10 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/struckchure/udl"
-	"github.com/struckchure/udl/types"
 )
 
 type IFzMoviesNg interface {
-	types.ISite
+	udl.ISite
 }
 
 type FzMoviesNg struct {
@@ -28,12 +27,12 @@ func (m *FzMoviesNg) Name() string {
 	return fmt.Sprintf("FzMovies - (%s)", m.BaseUrl)
 }
 
-func (m *FzMoviesNg) Run(option types.RunOption) error {
+func (m *FzMoviesNg) Run(option udl.RunOption) error {
 	c := colly.NewCollector()
 
 	var nextLink string
 	var stage string
-	results := []huh.Option[types.Descriptor]{}
+	results := []huh.Option[udl.Descriptor]{}
 
 	// search results
 	target := "div.magsoul-grid-post-inside div.magsoul-grid-post-details.magsoul-grid-post-block h3.magsoul-grid-post-title a"
@@ -42,7 +41,7 @@ func (m *FzMoviesNg) Run(option types.RunOption) error {
 			results,
 			huh.NewOption(
 				e.Text,
-				types.Descriptor{Title: e.Text, Link: e.Attr("href")},
+				udl.Descriptor{Title: e.Text, Link: e.Attr("href")},
 			),
 		)
 	})
@@ -84,8 +83,8 @@ func (m *FzMoviesNg) Run(option types.RunOption) error {
 			return
 		}
 
-		var series types.Descriptor
-		err := huh.NewSelect[types.Descriptor]().
+		var series udl.Descriptor
+		err := huh.NewSelect[udl.Descriptor]().
 			Title("Choose Movie").
 			Options(results...).
 			Value(&series).Run()
@@ -129,6 +128,6 @@ func (m *FzMoviesNg) Download(link string) {
 	}
 }
 
-func NewFzMoviesNg() types.ISite {
+func NewFzMoviesNg() udl.ISite {
 	return &FzMoviesNg{BaseUrl: "https://www.fzmovies.ng"}
 }

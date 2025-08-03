@@ -7,8 +7,9 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/samber/lo"
+
+	"github.com/struckchure/udl"
 	"github.com/struckchure/udl/sites"
-	"github.com/struckchure/udl/types"
 )
 
 var (
@@ -19,8 +20,8 @@ var (
 	fzmoviesNg = sites.NewFzMoviesNg()
 )
 
-var series []types.ISite = []types.ISite{mobiletvshowsSite}
-var movies []types.ISite = []types.ISite{fzmoviesNg}
+var series []udl.ISite = []udl.ISite{mobiletvshowsSite}
+var movies []udl.ISite = []udl.ISite{fzmoviesNg}
 
 func main() {
 	versionFlag := flag.Bool("version", false, "Check CLI Version")
@@ -43,13 +44,13 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	var site types.ISite
-	err = huh.NewSelect[types.ISite]().
+	var site udl.ISite
+	err = huh.NewSelect[udl.ISite]().
 		Title(lo.Capitalize(mode) + " / Choose Site").
 		Options(
 			lo.Map(
 				lo.Ternary(mode == "series", series, movies),
-				func(item types.ISite, idx int) huh.Option[types.ISite] {
+				func(item udl.ISite, idx int) huh.Option[udl.ISite] {
 					return huh.NewOption(item.Name(), item)
 				},
 			)...,
@@ -59,7 +60,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	err = site.Run(types.RunOption{})
+	err = site.Run(udl.RunOption{})
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-package types
+package udl
 
 type ISite interface {
 	Name() string

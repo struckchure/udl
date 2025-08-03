@@ -13,11 +13,10 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/struckchure/udl"
-	"github.com/struckchure/udl/types"
 )
 
 type IMobileTvShowsSite interface {
-	types.ISite
+	udl.ISite
 }
 
 type MobileTvShowsSite struct {
@@ -28,17 +27,17 @@ func (m *MobileTvShowsSite) Name() string {
 	return fmt.Sprintf("MobileTvShows - (%s)", m.BaseUrl)
 }
 
-func (m *MobileTvShowsSite) Run(option types.RunOption) error {
+func (m *MobileTvShowsSite) Run(option udl.RunOption) error {
 	c := colly.NewCollector()
 
-	results := []huh.Option[types.Descriptor]{}
+	results := []huh.Option[udl.Descriptor]{}
 
 	target := "div.mainbox3 > table:first-child > tbody:first-child > tr > td:nth-child(2) span"
 	c.OnHTML(target, func(e *colly.HTMLElement) {
 		desc := e.ChildText("small:nth-child(4)")
 		results = append(results, huh.NewOption(
 			e.ChildText("a[href]"),
-			types.Descriptor{
+			udl.Descriptor{
 				Title: e.ChildText("a[href]") + lo.Ternary(desc != "", " / "+desc, ""),
 				Link:  lo.Must(url.JoinPath(m.BaseUrl, e.ChildAttr("a[href]", "href"))),
 			}),
@@ -46,8 +45,8 @@ func (m *MobileTvShowsSite) Run(option types.RunOption) error {
 	})
 
 	c.OnScraped(func(r *colly.Response) {
-		var series types.Descriptor
-		err := huh.NewSelect[types.Descriptor]().
+		var series udl.Descriptor
+		err := huh.NewSelect[udl.Descriptor]().
 			Title("Choose Series").
 			Options(results...).
 			Value(&series).Run()
@@ -75,10 +74,10 @@ func (m *MobileTvShowsSite) Run(option types.RunOption) error {
 	return nil
 }
 
-func (m *MobileTvShowsSite) ListSeasons(series types.Descriptor) {
+func (m *MobileTvShowsSite) ListSeasons(series udl.Descriptor) {
 	c := colly.NewCollector()
 
-	results := []huh.Option[types.Descriptor]{}
+	results := []huh.Option[udl.Descriptor]{}
 
 	target := `div[itemprop="containsSeason"] > div.mainbox2`
 	c.OnHTML(target, func(e *colly.HTMLElement) {
@@ -86,7 +85,7 @@ func (m *MobileTvShowsSite) ListSeasons(series types.Descriptor) {
 			results,
 			huh.NewOption(
 				e.ChildText("a[href]"),
-				types.Descriptor{
+				udl.Descriptor{
 					Title: e.ChildText("a[href]"),
 					Link:  lo.Must(url.JoinPath(m.BaseUrl, e.ChildAttr("a[href]", "href"))),
 				},
@@ -95,8 +94,8 @@ func (m *MobileTvShowsSite) ListSeasons(series types.Descriptor) {
 	})
 
 	c.OnScraped(func(r *colly.Response) {
-		var season types.Descriptor
-		err := huh.NewSelect[types.Descriptor]().
+		var season udl.Descriptor
+		err := huh.NewSelect[udl.Descriptor]().
 			Title("Choose Series").
 			Options(results...).
 			Value(&season).Run()
@@ -110,16 +109,16 @@ func (m *MobileTvShowsSite) ListSeasons(series types.Descriptor) {
 	c.Visit(series.Link)
 }
 
-func (m *MobileTvShowsSite) ListEpisodes(season types.Descriptor) {
+func (m *MobileTvShowsSite) ListEpisodes(season udl.Descriptor) {
 	c := colly.NewCollector()
 
-	results := []huh.Option[types.Descriptor]{}
+	results := []huh.Option[udl.Descriptor]{}
 
 	target := `div.mainbox > table:first-child > tbody:first-child > tr:first-child > td:nth-child(2) > span:first-child`
 	c.OnHTML(target, func(e *colly.HTMLElement) {
 		results = append(results, huh.NewOption(
 			e.ChildText("small:first-child"),
-			types.Descriptor{
+			udl.Descriptor{
 				Title: e.ChildText("small:first-child") + "/ High MP4",
 				Link:  m.BaseUrl + "/" + e.ChildAttr("a[href]:nth-child(2)", "href"),
 			},
@@ -128,8 +127,8 @@ func (m *MobileTvShowsSite) ListEpisodes(season types.Descriptor) {
 	})
 
 	c.OnScraped(func(r *colly.Response) {
-		var episodes []types.Descriptor
-		err := huh.NewMultiSelect[types.Descriptor]().
+		var episodes []udl.Descriptor
+		err := huh.NewMultiSelect[udl.Descriptor]().
 			Title("Choose Series").
 			Options(results...).
 			Value(&episodes).Run()
@@ -143,14 +142,14 @@ func (m *MobileTvShowsSite) ListEpisodes(season types.Descriptor) {
 	c.Visit(season.Link)
 }
 
-func (m *MobileTvShowsSite) BulkDownload(episodes []types.Descriptor) {
+func (m *MobileTvShowsSite) BulkDownload(episodes []udl.Descriptor) {
 	start := time.Now()
 
 	var wg sync.WaitGroup
 
 	for _, episode := range episodes {
 		wg.Add(1)
-		go func(ep types.Descriptor) {
+		go func(ep udl.Descriptor) {
 			defer wg.Done()
 			m.Download(ep)
 		}(episode) // pass as arg to avoid closure capture issue
@@ -162,7 +161,7 @@ func (m *MobileTvShowsSite) BulkDownload(episodes []types.Descriptor) {
 	fmt.Printf("Took %.2f minute(s) to download %d episode(s)!", elapsed.Minutes(), len(episodes))
 }
 
-func (m *MobileTvShowsSite) Download(episode types.Descriptor) {
+func (m *MobileTvShowsSite) Download(episode udl.Descriptor) {
 	c := colly.NewCollector()
 
 	target := "div.mainbox2:nth-child(31) > table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(1) > td:nth-child(2) > span:nth-child(1) > a:nth-child(1)"
@@ -185,6 +184,6 @@ func (m *MobileTvShowsSite) Download(episode types.Descriptor) {
 	c.Visit(episode.Link)
 }
 
-func NewMobiletvshowsSite() types.ISite {
+func NewMobiletvshowsSite() udl.ISite {
 	return &MobileTvShowsSite{BaseUrl: "https://mobiletvshows.site"}
 }
