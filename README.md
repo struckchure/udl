@@ -18,6 +18,22 @@ To get started with Universal Downloader, follow these steps:
 
 ### Installation
 
+For Linux and MacOS
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/struckchure/udl/main/scripts/install.sh | bash
+```
+
+For Windows
+
+```sh
+irm https://raw.githubusercontent.com/struckchure/udl/main/scripts/install.ps1 | iex
+```
+
+Or download binaries from [release page](https://github.com/struckchure/udl/releases)
+
+### Development
+
 1.  **Clone the Repository**:
     ```bash
     git clone https://github.com/struckchure/udl.git
@@ -28,13 +44,13 @@ To get started with Universal Downloader, follow these steps:
     ```
 3.  **Run Directly (for quick testing)**:
     ```bash
-    go run cmd/main.go
+    go run ./cmd
     ```
     This command will download and run all necessary Go modules automatically.
 4.  **Build and Run (for a standalone executable)**:
     To create a compiled executable, use:
     ```bash
-    go build -o udl cmd/main.go
+    go build -o udl ./cmd
     ```
     You can then run the executable from anywhere in your terminal:
     ```bash
@@ -50,7 +66,7 @@ Universal Downloader provides an interactive experience directly in your termina
     ```bash
     ./udl
     # or
-    go run cmd/main.go
+    go run ./cmd
     ```
 2.  **Search for a Series**:
     The application will present an input prompt titled "Search for Series". Type the name of the TV show you want to find (e.g., "tom and jerry") and press `Enter`.
