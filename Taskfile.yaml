@@ -1,0 +1,15 @@
+version: 3
+
+tasks:
+  mobile:build:
+    dir: ./app
+    cmds:
+      - fyne package -os android -icon Icon.png -app-id com.struckchure.udl
+
+  mobile:dev:
+    dir: ./app
+    cmds:
+      - go get golang.org/x/mobile/bind
+      - gomobile bind -target=android -o ../android/app/libs/app.aar ./pages
+      - cd android && ./gradlew assembleDebug
+      - adb install -r app.apk
