@@ -19,11 +19,12 @@ import (
 
 type AnimepaheRu struct {
 	udl.BaseSite
+	BaseUrl string
 	APIBase string
 }
 
 func (a *AnimepaheRu) Name() string {
-	return fmt.Sprintf("Animepahe - (%s)", a.APIBase)
+	return fmt.Sprintf("Animepahe - (%s)", a.BaseUrl)
 }
 
 func (a *AnimepaheRu) Run(option udl.RunOption) error {
@@ -270,5 +271,5 @@ func (a *AnimepaheRu) download(link string, episodeNum int) error {
 }
 
 func NewAnimepaheRu() udl.ISite {
-	return &AnimepaheRu{}
+	return &AnimepaheRu{BaseUrl: "https://animepahe.ru"}
 }
