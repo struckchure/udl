@@ -3,9 +3,7 @@ package sites
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"net/url"
 	"path/filepath"
 	"regexp"
@@ -47,17 +45,17 @@ func (a *Animepahe) Run(option udl.RunOption) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if len(searchResults) == 0 {
+	if len(searchResults.Data) == 0 {
 		log.Fatal("No results found.")
 	}
-	log.Printf("🔗 SEARCHRESULT %s", searchResults)
+
 	// Step 3: Prompt user to select series
-	options := lo.Map(searchResults, func(item AnimeSearchResult, _ int) huh.Option[AnimeSearchResult] {
+	options := lo.Map(searchResults.Data, func(item AnimeData, _ int) huh.Option[AnimeData] {
 		return huh.NewOption(item.Title, item)
 	})
 
-	var selectedAnime AnimeSearchResult
-	if err := huh.NewSelect[AnimeSearchResult]().
+	var selectedAnime AnimeData
+	if err := huh.NewSelect[AnimeData]().
 		Title("Choose Anime").
 		Options(options...).
 		Value(&selectedAnime).Run(); err != nil {
@@ -65,7 +63,7 @@ func (a *Animepahe) Run(option udl.RunOption) error {
 	}
 
 	// Step 4: List episodes
-	episodes, err := a.fetchEpisodes(selectedAnime.ID)
+	episodes, err := a.fetchEpisodes(selectedAnime.Session)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -73,101 +71,120 @@ func (a *Animepahe) Run(option udl.RunOption) error {
 		log.Fatal("No episodes found.")
 	}
 
-	// Step 5: Multi-select episodes (like MobileTvShows does)
+	// Step 5: Multi-select episodes
 	epOptions := lo.Map(episodes, func(ep AnimeEpisode, _ int) huh.Option[AnimeEpisode] {
-		title := fmt.Sprintf("Episode %d [%s]", ep.Episode, ep.Fansub)
+		title := fmt.Sprintf("%s - Episode %d", selectedAnime.Title, ep.Episode)
 		return huh.NewOption(title, ep)
 	})
 
 	var selectedEpisodes []AnimeEpisode
-	if err := huh.NewMultiSelect[AnimeEpisode]().
+	err = huh.NewMultiSelect[AnimeEpisode]().
 		Title("Choose Episodes").
 		Options(epOptions...).
-		Value(&selectedEpisodes).Run(); err != nil {
+		Value(&selectedEpisodes).
+		Run()
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Step 6: Bulk download (like MobileTvShows)
-	a.bulkDownload(selectedEpisodes)
+	// Step 6: Bulk download
+	a.bulkDownload(selectedAnime.Session, selectedEpisodes)
 
 	return nil
 }
 
-// ========== INTERNAL TYPES AND METHODS ==========
-
 type AnimeSearchResponse struct {
-	Data []AnimeSearchResult `json:"data"`
+	Total       int         `json:"total"`
+	PerPage     int         `json:"per_page"`
+	CurrentPage int         `json:"current_page"`
+	LastPage    int         `json:"last_page"`
+	From        int         `json:"from"`
+	To          int         `json:"to"`
+	Data        []AnimeData `json:"data"`
 }
 
-type AnimeSearchResult struct {
-	Title string `json:"title"`
-	ID    int    `json:"id"`
+type AnimeData struct {
+	ID       int     `json:"id"`
+	Title    string  `json:"title"`
+	Type     string  `json:"type"`
+	Episodes int     `json:"episodes"`
+	Status   string  `json:"status"`
+	Season   string  `json:"season"`
+	Year     int     `json:"year"`
+	Score    float64 `json:"score"`
+	Poster   string  `json:"poster"`
+	Session  string  `json:"session"`
+}
+
+func (a *Animepahe) searchAnime(query string) (*AnimeSearchResponse, error) {
+	endpoint := fmt.Sprintf("%s?m=search&q=%s", a.APIBase, url.QueryEscape(query))
+
+	c := colly.NewCollector()
+	c.UserAgent = "Mozilla/5.0 (compatible; udl-bot/1.0)"
+
+	var results AnimeSearchResponse
+
+	c.OnResponse(func(r *colly.Response) {
+		if err := json.Unmarshal(r.Body, &results); err != nil {
+			log.Printf("Failed to parse search response: %v", err)
+		}
+	})
+
+	if err := c.Visit(endpoint); err != nil {
+		return nil, err
+	}
+
+	return &results, nil
 }
 
 type AnimeEpisodesResponse struct {
-	Data []AnimeEpisode `json:"data"`
+	Total       int            `json:"total"`
+	PerPage     int            `json:"per_page"`
+	CurrentPage int            `json:"current_page"`
+	LastPage    int            `json:"last_page"`
+	NextPageURL *string        `json:"next_page_url"`
+	PrevPageURL *string        `json:"prev_page_url"`
+	From        int            `json:"from"`
+	To          int            `json:"to"`
+	Data        []AnimeEpisode `json:"data"`
 }
 
 type AnimeEpisode struct {
-	Episode int    `json:"episode"`
-	Session string `json:"session"`
-	Fansub  string `json:"fansub"`
+	ID        int    `json:"id"`
+	AnimeID   int    `json:"anime_id"`
+	Episode   int    `json:"episode"`
+	Episode2  int    `json:"episode2"`
+	Edition   string `json:"edition"`
+	Title     string `json:"title"`
+	Snapshot  string `json:"snapshot"`
+	Disc      string `json:"disc"`
+	Audio     string `json:"audio"`
+	Duration  string `json:"duration"`
+	Session   string `json:"session"`
+	Filler    int    `json:"filler"`
+	CreatedAt string `json:"created_at"`
 }
 
-func (a *Animepahe) searchAnime(query string) ([]AnimeSearchResult, error) {
-	endpoint := fmt.Sprintf("%s?m=search&q=%s", a.APIBase, url.QueryEscape(query))
+func (a *Animepahe) fetchEpisodes(id string) ([]AnimeEpisode, error) {
+	c := colly.NewCollector()
+	c.UserAgent = "Mozilla/5.0 (compatible; udl-bot/1.0)"
 
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", endpoint, nil)
-	if err != nil {
+	var results AnimeEpisodesResponse
+	c.OnResponse(func(r *colly.Response) {
+		if err := json.Unmarshal(r.Body, &results); err != nil {
+			log.Printf("Failed to parse episodes response: %v", err)
+		}
+	})
+
+	endpoint := fmt.Sprintf("%s?m=release&id=%s&sort=episode_asc", a.APIBase, id)
+	if err := c.Visit(endpoint); err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; udl-bot/1.0)")
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, _ := io.ReadAll(resp.Body)
-	
-	var response AnimeSearchResponse
-	if err := json.Unmarshal(bodyBytes, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse search response: %v", err)
-	}
-
-	return response.Data, nil
+	return results.Data, nil
 }
 
-func (a *Animepahe) fetchEpisodes(id int) ([]AnimeEpisode, error) {
-	endpoint := fmt.Sprintf("%s?m=release&id=%d&sort=episode_asc", a.APIBase, id)
-
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; udl-bot/1.0)")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, _ := io.ReadAll(resp.Body)
-	
-	var response AnimeEpisodesResponse
-	if err := json.Unmarshal(bodyBytes, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse episodes response: %v", err)
-	}
-
-	return response.Data, nil
-}
-
-// Bulk download function similar to MobileTvShows
-func (a *Animepahe) bulkDownload(episodes []AnimeEpisode) {
+func (a *Animepahe) bulkDownload(season string, episodes []AnimeEpisode) {
 	start := time.Now()
 
 	var wg sync.WaitGroup
@@ -176,25 +193,23 @@ func (a *Animepahe) bulkDownload(episodes []AnimeEpisode) {
 		wg.Add(1)
 		go func(ep AnimeEpisode) {
 			defer wg.Done()
-			a.downloadEpisode(ep)
-		}(episode) // pass as arg to avoid closure capture issue
+			a.downloadEpisode(season, ep)
+		}(episode)
 	}
 
-	wg.Wait() // Wait for all goroutines to finish
+	wg.Wait()
 
 	elapsed := time.Since(start)
 	fmt.Printf("Took %.2f minute(s) to download %d episode(s)!\n", elapsed.Minutes(), len(episodes))
 }
 
-func (a *Animepahe) downloadEpisode(episode AnimeEpisode) {
-	// Step 6: Scrape download URL from episode page
-	downloadURL, err := a.resolveStreamURL(episode.Session)
+func (a *Animepahe) downloadEpisode(season string, episode AnimeEpisode) {
+	downloadURL, err := a.resolveStreamURL(season, episode.Session)
 	if err != nil {
 		log.Printf("Failed to resolve stream URL for episode %d: %v", episode.Episode, err)
 		return
 	}
 
-	// Step 7: Download
 	fmt.Printf("Downloading Episode %d...\n", episode.Episode)
 	err = a.download(downloadURL, episode.Episode)
 	if err != nil {
@@ -202,41 +217,30 @@ func (a *Animepahe) downloadEpisode(episode AnimeEpisode) {
 	}
 }
 
-func (a *Animepahe) resolveStreamURL(session string) (string, error) {
-	streamPage := fmt.Sprintf("https://animepahe.ru/play/%s", session)
+func (a *Animepahe) resolveStreamURL(season string, episode string) (string, error) {
+	streamPage := fmt.Sprintf("https://animepahe.ru/play/%s/%s", season, episode)
 
-	var resolved string
 	c := colly.NewCollector()
-	
-	// Set user agent like other scrapers
 	c.UserAgent = "Mozilla/5.0 (compatible; udl-bot/1.0)"
 
-	// Look for various patterns that might contain the stream URL
-	c.OnHTML("script", func(e *colly.HTMLElement) {
+	var resolved string
+
+	c.OnHTML("#pickDownload > a[href]", func(e *colly.HTMLElement) {
 		text := e.Text
-		
-		// Try multiple extraction patterns
+		fmt.Println(text)
+
 		patterns := []string{
 			`https://[^"'\s]+\.m3u8[^"'\s]*`,
 			`https://[^"'\s]+\.mp4[^"'\s]*`,
 			`https://kwik\.cx/[^"'\s]+`,
 		}
-		
+
 		for _, pattern := range patterns {
 			re := regexp.MustCompile(pattern)
-			matches := re.FindStringSubmatch(text)
-			if len(matches) > 0 {
+			if matches := re.FindStringSubmatch(text); len(matches) > 0 {
 				resolved = matches[0]
 				return
 			}
-		}
-	})
-
-	// Also check for direct links in the page
-	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
-		href := e.Attr("href")
-		if strings.Contains(href, ".mp4") || strings.Contains(href, ".m3u8") {
-			resolved = href
 		}
 	})
 
@@ -244,11 +248,11 @@ func (a *Animepahe) resolveStreamURL(session string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	if resolved == "" {
-		return "", fmt.Errorf("failed to extract stream link from session: %s", session)
+		return "", fmt.Errorf("failed to extract stream link from session: %s", episode)
 	}
-	
+
 	return resolved, nil
 }
 
@@ -256,15 +260,12 @@ func (a *Animepahe) download(link string, episodeNum int) error {
 	if link == "" {
 		return fmt.Errorf("empty link")
 	}
-	
-	// Create a more descriptive filename
+
 	filename := fmt.Sprintf("Episode_%d_%s", episodeNum, filepath.Base(link))
-	
-	// Handle cases where the base might not have an extension
 	if !strings.Contains(filename, ".") {
 		filename += ".mp4"
 	}
-	
+
 	return udl.DownloadWithProgress(link, filename)
 }
 

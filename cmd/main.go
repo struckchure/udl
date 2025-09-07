@@ -12,23 +12,17 @@ import (
 	"github.com/struckchure/udl/sites"
 )
 
-// These are often set via -ldflags during build
-
-
 var (
 	// Series
 	mobiletvshowsSite = sites.NewMobiletvshowsSite()
+	animepahe         = sites.NewAnimepahe()
 
 	// Movies
 	fzmoviesNg = sites.NewFzMoviesNg()
-
-	// Animes
-	animepahe = sites.NewAnimepahe()
 )
 
-var series []udl.ISite = []udl.ISite{mobiletvshowsSite}
+var series []udl.ISite = []udl.ISite{mobiletvshowsSite, animepahe}
 var movies []udl.ISite = []udl.ISite{fzmoviesNg}
-var animes []udl.ISite = []udl.ISite{animepahe}
 
 func main() {
 	versionFlag := flag.Bool("version", false, "Check CLI Version")
@@ -45,7 +39,6 @@ func main() {
 		Options(
 			huh.NewOption("Series", "series"),
 			huh.NewOption("Movies", "movies"),
-			huh.NewOption("Animes", "animes"),
 		).
 		Value(&mode).Run()
 	if err != nil {
@@ -58,8 +51,6 @@ func main() {
 		siteOptions = series
 	case "movies":
 		siteOptions = movies
-	case "animes":
-		siteOptions = animes
 	default:
 		log.Fatalf("Unsupported mode: %s", mode)
 	}
