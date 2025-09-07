@@ -15,13 +15,13 @@ import (
 var (
 	// Series
 	mobiletvshowsSite = sites.NewMobiletvshowsSite()
-	animepahe         = sites.NewAnimepahe()
+	animepaheRu       = sites.NewAnimepaheRu()
 
 	// Movies
 	fzmoviesNg = sites.NewFzMoviesNg()
 )
 
-var series []udl.ISite = []udl.ISite{mobiletvshowsSite, animepahe}
+var series []udl.ISite = []udl.ISite{mobiletvshowsSite, animepaheRu}
 var movies []udl.ISite = []udl.ISite{fzmoviesNg}
 
 func main() {

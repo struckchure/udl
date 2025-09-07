@@ -1,215 +1,274 @@
 package sites
 
-// import (
-// 	"encoding/json"
-// 	"fmt"
-// 	"log"
-// 	"net/url"
-// 	"path/filepath"
-// 	"sync"
-// 	"time"
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/url"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
 
-// 	"github.com/charmbracelet/huh"
-// 	"github.com/gocolly/colly/v2"
-// 	"github.com/samber/lo"
-// 	"resty.dev/v3"
+	"github.com/charmbracelet/huh"
+	"github.com/gocolly/colly/v2"
+	"github.com/samber/lo"
+	"github.com/struckchure/udl"
+)
 
-// 	"github.com/struckchure/udl"
-// )
+type AnimepaheRu struct {
+	udl.BaseSite
+	APIBase string
+}
 
-// type AnimepaheRu struct {
-// 	udl.BaseSite
-// 	client  *resty.Client
-// 	BaseUrl string
-// }
+func (a *AnimepaheRu) Name() string {
+	return fmt.Sprintf("Animepahe - (%s)", a.APIBase)
+}
 
-// func (m *AnimepaheRu) Name() string {
-// 	return fmt.Sprintf("Animepahe - (%s)", m.BaseUrl)
-// }
+func (a *AnimepaheRu) Run(option udl.RunOption) error {
+	a.APIBase = "https://animepahe.ru/api"
 
-// type AnimeSearchResponse struct {
-// 	Total       int         `json:"total"`
-// 	PerPage     int         `json:"per_page"`
-// 	CurrentPage int         `json:"current_page"`
-// 	LastPage    int         `json:"last_page"`
-// 	From        int         `json:"from"`
-// 	To          int         `json:"to"`
-// 	Data        []AnimeData `json:"data"`
-// }
+	// Step 1: Prompt user for search
+	var search string
+	err := huh.
+		NewInput().
+		Title("What anime do you want to watch?").
+		Validate(huh.ValidateNotEmpty()).
+		Value(&search).Run()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-// type AnimeData struct {
-// 	ID       int     `json:"id"`
-// 	Title    string  `json:"title"`
-// 	Type     string  `json:"type"`
-// 	Episodes int     `json:"episodes"`
-// 	Status   string  `json:"status"`
-// 	Season   string  `json:"season"`
-// 	Year     int     `json:"year"`
-// 	Score    float64 `json:"score"`
-// 	Poster   string  `json:"poster"`
-// 	Session  string  `json:"session"`
-// }
+	// Step 2: Search anime
+	searchResults, err := a.searchAnime(search)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(searchResults.Data) == 0 {
+		log.Fatal("No results found.")
+	}
 
-// func (m *AnimepaheRu) Run(option udl.RunOption) error {
-// 	var search string
-// 	err := huh.
-// 		NewInput().
-// 		Title("What do you want to watch?").
-// 		Validate(huh.ValidateNotEmpty()).
-// 		Value(&search).Run()
-// 	if err != nil {
-// 		log.Fatalln(err)
-// 	}
+	// Step 3: Prompt user to select series
+	options := lo.Map(searchResults.Data, func(item AnimeData, _ int) huh.Option[AnimeData] {
+		return huh.NewOption(item.Title, item)
+	})
 
-// 	// https://animepahe.ru/api?m=search&q=demon%20slayer
+	var selectedAnime AnimeData
+	if err := huh.NewSelect[AnimeData]().
+		Title("Choose Anime").
+		Options(options...).
+		Value(&selectedAnime).Run(); err != nil {
+		log.Fatal(err)
+	}
 
-// 	c := colly.NewCollector()
-// 	c.UserAgent = "Mozilla/5.0 (compatible; udl-bot/1.0)"
+	// Step 4: List episodes
+	episodes, err := a.fetchEpisodes(selectedAnime.Session)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(episodes) == 0 {
+		log.Fatal("No episodes found.")
+	}
 
-// 	var results AnimeSearchResponse
-// 	c.OnResponse(func(r *colly.Response) {
-// 		if err := json.Unmarshal(r.Body, &results); err != nil {
-// 			log.Panicln(err)
-// 		}
-// 	})
+	// Step 5: Multi-select episodes
+	epOptions := lo.Map(episodes, func(ep AnimeEpisode, _ int) huh.Option[AnimeEpisode] {
+		title := fmt.Sprintf("%s - Episode %d", selectedAnime.Title, ep.Episode)
+		return huh.NewOption(title, ep)
+	})
 
-// 	c.Visit(fmt.Sprintf("https://animepahe.ru/api?m=search&q=%s", search))
+	var selectedEpisodes []AnimeEpisode
+	err = huh.NewMultiSelect[AnimeEpisode]().
+		Title("Choose Episodes").
+		Options(epOptions...).
+		Value(&selectedEpisodes).
+		Run()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-// 	// res, err := m.client.
-// 	// 	R().
-// 	// 	SetResult(&results).
-// 	// 	SetQueryParam("m", "search").
-// 	// 	SetQueryParam("q", search).
-// 	// 	SetHeader("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:142.0) Gecko/20100101 Firefox/142.0").
-// 	// 	Get("/")
-// 	// fmt.Println(res.Request.Header)
-// 	// if err != nil {
-// 	// 	log.Fatalln(err)
-// 	// }
+	// Step 6: Bulk download
+	a.bulkDownload(selectedAnime.Session, selectedEpisodes)
 
-// 	// fmt.Println(res.RawResponse.Body)
+	return nil
+}
 
-// 	// m.listSeasons(udl.Descriptor{Title: results.Data[0].Title, Link: results.Data[0].Session})
+type AnimeSearchResponse struct {
+	Total       int         `json:"total"`
+	PerPage     int         `json:"per_page"`
+	CurrentPage int         `json:"current_page"`
+	LastPage    int         `json:"last_page"`
+	From        int         `json:"from"`
+	To          int         `json:"to"`
+	Data        []AnimeData `json:"data"`
+}
 
-// 	return nil
-// }
+type AnimeData struct {
+	ID       int     `json:"id"`
+	Title    string  `json:"title"`
+	Type     string  `json:"type"`
+	Episodes int     `json:"episodes"`
+	Status   string  `json:"status"`
+	Season   string  `json:"season"`
+	Year     int     `json:"year"`
+	Score    float64 `json:"score"`
+	Poster   string  `json:"poster"`
+	Session  string  `json:"session"`
+}
 
-// func (m *AnimepaheRu) listSeasons(series udl.Descriptor) {
-// 	c := colly.NewCollector()
+func (a *AnimepaheRu) searchAnime(query string) (*AnimeSearchResponse, error) {
+	endpoint := fmt.Sprintf("%s?m=search&q=%s", a.APIBase, url.QueryEscape(query))
 
-// 	results := []huh.Option[udl.Descriptor]{}
+	c := colly.NewCollector()
+	c.UserAgent = "Mozilla/5.0 (compatible; udl-bot/1.0)"
 
-// 	target := `div[itemprop="containsSeason"] > div.mainbox2`
-// 	c.OnHTML(target, func(e *colly.HTMLElement) {
-// 		results = append(
-// 			results,
-// 			huh.NewOption(
-// 				e.ChildText("a[href]"),
-// 				udl.Descriptor{
-// 					Title: e.ChildText("a[href]"),
-// 					Link:  lo.Must(url.JoinPath(m.BaseUrl, e.ChildAttr("a[href]", "href"))),
-// 				},
-// 			),
-// 		)
-// 	})
+	var results AnimeSearchResponse
 
-// 	c.OnScraped(func(r *colly.Response) {
-// 		var season udl.Descriptor
-// 		err := huh.NewSelect[udl.Descriptor]().
-// 			Title("Choose Series").
-// 			Options(results...).
-// 			Value(&season).Run()
-// 		if err != nil {
-// 			log.Fatalln(err)
-// 		}
+	c.OnResponse(func(r *colly.Response) {
+		if err := json.Unmarshal(r.Body, &results); err != nil {
+			log.Printf("Failed to parse search response: %v", err)
+		}
+	})
 
-// 		m.listEpisodes(season)
-// 	})
+	if err := c.Visit(endpoint); err != nil {
+		return nil, err
+	}
 
-// 	c.Visit(series.Link)
-// }
+	return &results, nil
+}
 
-// func (m *AnimepaheRu) listEpisodes(season udl.Descriptor) {
-// 	c := colly.NewCollector()
+type AnimeEpisodesResponse struct {
+	Total       int            `json:"total"`
+	PerPage     int            `json:"per_page"`
+	CurrentPage int            `json:"current_page"`
+	LastPage    int            `json:"last_page"`
+	NextPageURL *string        `json:"next_page_url"`
+	PrevPageURL *string        `json:"prev_page_url"`
+	From        int            `json:"from"`
+	To          int            `json:"to"`
+	Data        []AnimeEpisode `json:"data"`
+}
 
-// 	results := []huh.Option[udl.Descriptor]{}
+type AnimeEpisode struct {
+	ID        int    `json:"id"`
+	AnimeID   int    `json:"anime_id"`
+	Episode   int    `json:"episode"`
+	Episode2  int    `json:"episode2"`
+	Edition   string `json:"edition"`
+	Title     string `json:"title"`
+	Snapshot  string `json:"snapshot"`
+	Disc      string `json:"disc"`
+	Audio     string `json:"audio"`
+	Duration  string `json:"duration"`
+	Session   string `json:"session"`
+	Filler    int    `json:"filler"`
+	CreatedAt string `json:"created_at"`
+}
 
-// 	target := `div.mainbox > table:first-child > tbody:first-child > tr:first-child > td:nth-child(2) > span:first-child`
-// 	c.OnHTML(target, func(e *colly.HTMLElement) {
-// 		results = append(results, huh.NewOption(
-// 			e.ChildText("small:first-child"),
-// 			udl.Descriptor{
-// 				Title: e.ChildText("small:first-child") + "/ High MP4",
-// 				Link:  m.BaseUrl + "/" + e.ChildAttr("a[href]:nth-child(2)", "href"),
-// 			},
-// 		),
-// 		)
-// 	})
+func (a *AnimepaheRu) fetchEpisodes(id string) ([]AnimeEpisode, error) {
+	c := colly.NewCollector()
+	c.UserAgent = "Mozilla/5.0 (compatible; udl-bot/1.0)"
 
-// 	c.OnScraped(func(r *colly.Response) {
-// 		var episodes []udl.Descriptor
-// 		err := huh.NewMultiSelect[udl.Descriptor]().
-// 			Title("Choose Series").
-// 			Options(results...).
-// 			Value(&episodes).Run()
-// 		if err != nil {
-// 			log.Fatalln(err)
-// 		}
+	var results AnimeEpisodesResponse
+	c.OnResponse(func(r *colly.Response) {
+		if err := json.Unmarshal(r.Body, &results); err != nil {
+			log.Printf("Failed to parse episodes response: %v", err)
+		}
+	})
 
-// 		m.bulkDownload(episodes)
-// 	})
+	endpoint := fmt.Sprintf("%s?m=release&id=%s&sort=episode_asc", a.APIBase, id)
+	if err := c.Visit(endpoint); err != nil {
+		return nil, err
+	}
 
-// 	c.Visit(season.Link)
-// }
+	return results.Data, nil
+}
 
-// func (m *AnimepaheRu) bulkDownload(episodes []udl.Descriptor) {
-// 	start := time.Now()
+func (a *AnimepaheRu) bulkDownload(season string, episodes []AnimeEpisode) {
+	start := time.Now()
 
-// 	var wg sync.WaitGroup
+	var wg sync.WaitGroup
 
-// 	for _, episode := range episodes {
-// 		wg.Add(1)
-// 		go func(ep udl.Descriptor) {
-// 			defer wg.Done()
-// 			m.download(ep)
-// 		}(episode) // pass as arg to avoid closure capture issue
-// 	}
+	for _, episode := range episodes {
+		wg.Add(1)
+		go func(ep AnimeEpisode) {
+			defer wg.Done()
+			a.downloadEpisode(season, ep)
+		}(episode)
+	}
 
-// 	wg.Wait() // Wait for all goroutines to finish
+	wg.Wait()
 
-// 	elapsed := time.Since(start)
-// 	fmt.Printf("Took %.2f minute(s) to download %d episode(s)!", elapsed.Minutes(), len(episodes))
-// }
+	elapsed := time.Since(start)
+	fmt.Printf("Took %.2f minute(s) to download %d episode(s)!\n", elapsed.Minutes(), len(episodes))
+}
 
-// func (m *AnimepaheRu) download(episode udl.Descriptor) {
-// 	c := colly.NewCollector()
+func (a *AnimepaheRu) downloadEpisode(season string, episode AnimeEpisode) {
+	downloadURL, err := a.resolveStreamURL(season, episode.Session)
+	if err != nil {
+		log.Printf("Failed to resolve stream URL for episode %d: %v", episode.Episode, err)
+		return
+	}
 
-// 	target := "div.mainbox2:nth-child(31) > table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(1) > td:nth-child(2) > span:nth-child(1) > a:nth-child(1)"
-// 	c.OnHTML(target, func(e *colly.HTMLElement) {
-// 		episode.Link = m.BaseUrl + "/" + e.Attr("href")
-// 		e.Request.Visit(episode.Link)
-// 	})
+	fmt.Printf("Downloading Episode %d...\n", episode.Episode)
+	err = a.download(downloadURL, episode.Episode)
+	if err != nil {
+		log.Printf("Failed to download episode %d: %v", episode.Episode, err)
+	}
+}
 
-// 	target = "div.downloadlinks2:nth-child(12) > p:nth-child(2) > input:nth-child(1)"
-// 	c.OnHTML(target, func(e *colly.HTMLElement) {
-// 		episode.Link = e.Attr("value")
+func (a *AnimepaheRu) resolveStreamURL(season string, episode string) (string, error) {
+	streamPage := fmt.Sprintf("https://animepahe.ru/play/%s/%s", season, episode)
 
-// 		path := filepath.Base(episode.Link)
-// 		err := udl.DownloadWithProgress(episode.Link, path)
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-// 	})
+	c := colly.NewCollector()
+	c.UserAgent = "Mozilla/5.0 (compatible; udl-bot/1.0)"
 
-// 	c.Visit(episode.Link)
-// }
+	var resolved string
 
-// func NewAnimepaheRu() udl.ISite {
-// 	client := resty.New().SetBaseURL("https://animepahe.ru/api")
-// 	defer client.Close()
+	c.OnHTML("#pickDownload > a[href]", func(e *colly.HTMLElement) {
+		text := e.Text
+		fmt.Println(text)
 
-// 	return &AnimepaheRu{
-// 		client:  client,
-// 		BaseUrl: "https://animepahe.ru",
-// 	}
-// }
+		patterns := []string{
+			`https://[^"'\s]+\.m3u8[^"'\s]*`,
+			`https://[^"'\s]+\.mp4[^"'\s]*`,
+			`https://kwik\.cx/[^"'\s]+`,
+		}
+
+		for _, pattern := range patterns {
+			re := regexp.MustCompile(pattern)
+			if matches := re.FindStringSubmatch(text); len(matches) > 0 {
+				resolved = matches[0]
+				return
+			}
+		}
+	})
+
+	err := c.Visit(streamPage)
+	if err != nil {
+		return "", err
+	}
+
+	if resolved == "" {
+		return "", fmt.Errorf("failed to extract stream link from session: %s", episode)
+	}
+
+	return resolved, nil
+}
+
+func (a *AnimepaheRu) download(link string, episodeNum int) error {
+	if link == "" {
+		return fmt.Errorf("empty link")
+	}
+
+	filename := fmt.Sprintf("Episode_%d_%s", episodeNum, filepath.Base(link))
+	if !strings.Contains(filename, ".") {
+		filename += ".mp4"
+	}
+
+	return udl.DownloadWithProgress(link, filename)
+}
+
+func NewAnimepaheRu() udl.ISite {
+	return &AnimepaheRu{}
+}
